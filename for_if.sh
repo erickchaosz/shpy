@@ -12,6 +12,21 @@ test 2 = 4
 then
 echo true
 fi
+
+if test -n 'aa'
+then
+  echo true
+fi
+
+if test -c /dev/null
+then
+    echo a
+fi
+
+if test -d /dev/null
+then
+    echo /dev/null
+fi
  
 for file in 1 2 3
 do 
@@ -41,4 +56,4 @@ echo 'hello' aa
       echo aa         bb
 cd /tmp
 expr 1 '*' 1 % 4
-echo "aa"
+echo             "aa"

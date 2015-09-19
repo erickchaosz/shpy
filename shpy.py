@@ -30,11 +30,18 @@ def findImports(tokens):
     'SYS'     : 'sys',
     'GLOB'    : 'glob',
     'READ'    : 'sys',
-    'ARG'     : 'sys'}
+    'ARG'     : 'sys',
+    'OPT'     : 'options'}
     for text,tag in tokens:
         importItem = tagToImports.get(tag)
         if importItem:
-            imports.add(importItem)
+            if importItem == 'options':
+                if re.match('\s+-([b-g]|k|p|r|s|u|w|x|L|S)\s+', text):
+                    imports.add('os')
+                if re.match('\s+-(b|c|p|S)\s+', text):
+                    imports.add('stat')
+            else:
+                imports.add(importItem)
     return imports
 
 def findNewLine(text):
@@ -84,7 +91,7 @@ def echo(pyExprs, tokens, pos):
             (words, _) = parse([tokens[pos]])
             pyExprs += words
         pos += 1
-    return (pyExprs, pos-1)
+    return (pyExprs, pos)
 
 def whitespace(pyExprs, tokens, pos):
     return (pyExprs + ' ', pos)
@@ -190,69 +197,68 @@ def forStatement(pyExprs, tokens, pos):
             forBody = forBody + '\t' + line.lstrip(' ') + '\n'
     return (pyExprs + forBody, pos-1)
 
-def bOPT(pyExprs):
-    pass
+def fileOPT(pyCall, pyExprs, tokens, pos, callParam = '', extraOps = ''):
+    pos += 1
+    (fileName, _) = parse([tokens[pos]])
+    pyExprs = pyCall + '(' + fileName + callParam + ')' + extraOps
+    return (pyExprs, pos)
 
-def cOPT(pyExprs):
-    pass
+def bOPT(pyExprs, tokens, pos):
+    return fileOPT('stat.S_ISBLK(os.stat', pyExprs, tokens, pos, ').st_mode')
 
-def dOPT(pyExprs):
-    #import os.path
-    pyExprs = 'os.path.isdir(' + pyExprs.rstrip() + ')'
-    return pyExprs
+def cOPT(pyExprs, tokens, pos):
+    return fileOPT('stat.S_ISCHR(os.stat', pyExprs, tokens, pos, ').st_mode')
 
-def eOPT(pyExprs):
-    pass
+def dOPT(pyExprs, tokens, pos):
+    return fileOPT('os.path.isdir', pyExprs, tokens, pos)
 
-def fOPT(pyExprs):
-    pass
+def eOPT(pyExprs, tokens, pos):
+    return fileOPT('os.path.exists', pyExprs, tokens, pos)
+
+def fOPT(pyExprs, tokens, pos):
+    return fileOPT('os.path.isfile', pyExprs, tokens, pos)
 
 def gOPT(pyExprs):
-    pass
+    return fileOPT('os.stat', pyExprs, tokens, pos, '', '.st_mode & stat.S_ISGID')
 
-def hOPT(pyExprs):
-    pass
+def kOPT(pyExprs, tokens, pos):
+    return fileOPT('os.stat', pyExprs, tokens, pos, '', '.st_mode & 01000 == 01000')
+    
+def pOPT(pyExprs, tokens, pos):
+    return fileOPT('stat.S_ISFIFO(os.stat', pyExprs, tokens, pos, ').st_mode')
 
-def kOPT(pyExprs):
-    pass
-
-def nOPT(pyExprs):
-    pass
-
-def pOPT(pyExprs):
-    pass
-
-def rOPT(pyExprs):
-    #import os
-    pyExprs = 'os.access(' + pyExprs.rstrip() + ', os.R_OK)'
-    return pyExprs
-
-def sOPT(pyExprs):
-    pass
+def rOPT(pyExprs, tokens, pos):
+    return fileOPT('os.access', pyExprs, tokens, pos, ', os.R_OK')
+  
+def sOPT(pyExprs, tokens, pos):
+    return fileOPT('os.path.getsize', pyExprs, tokens, pos, '' , ' > 0')
 
 def uOPT(pyExprs):
-    pass
+    return fileOPT('os.stat', pyExprs, tokens, pos, '', '.st_mode & stat.S_ISUID')
 
-def wOPT(pyExprs):
-    pass
+def wOPT(pyExprs, tokens, pos):
+    return fileOPT('os.access', pyExprs, tokens, pos, ', os.W_OK')
 
-def xOPT(pyExprs):
-    pass
+def xOPT(pyExprs, tokens, pos):
+    return fileOPT('os.access', pyExprs, tokens, pos, ', os.X_OK')
 
-def zOPT(pyExprs):
-    pass
+def stringOPT(pyExprs, tokens, pos, check):
+    pos += 1
+    (word, _) = parse([tokens[pos]])
+    pyExprs = pyExprs + 'len(' + word + ')' + check
+    return (pyExprs, pos)
 
-def LOPT(pyExprs):
-    pass
+def zOPT(pyExprs, tokens, pos):
+    return stringOPT(pyExprs, tokens, pos, ' == 0 ')
 
-def OOPT(pyExprs):
-    pass
+def nOPT(pyExprs, tokens, pos):
+    return stringOPT(pyExprs, tokens, pos, ' > 0 ')
 
-def GOPT(pyExprs):
-    pass
+def LOPT(pyExprs, tokens, pos):
+    return fileOPT('os.islink', pyExprs, tokens, pos)
 
-def SOPT(pyExprs):
-    pass
+def SOPT(pyExprs, tokens, pos):
+    return fileOPT('stat.S_ISSOCK(os.stat', pyExprs, tokens, pos, ').st_mode')
 
 def ntOPT(pyExprs):
     pass
@@ -284,7 +290,10 @@ def aOPT(pyExprs):
 def oOPT(pyExprs):
     pass
 
-def predParse(tokens):
+def exOPT(pyExprs):
+    pass
+
+def test(pyExprs, tokens, pos):
     predOptions = {
         '-b' :  bOPT,
         '-c' :  cOPT,
@@ -292,7 +301,6 @@ def predParse(tokens):
         '-e' :  eOPT,
         '-f' :  fOPT,
         '-g' :  gOPT,
-        '-h' :  hOPT,
         '-k' :  kOPT,
         '-n' :  nOPT,
         '-p' :  pOPT,
@@ -303,8 +311,6 @@ def predParse(tokens):
         '-x' :  xOPT,
         '-z' :  zOPT,
         '-L' :  LOPT,
-        '-O' :  OOPT,
-        '-G' :  GOPT,
         '-S' :  SOPT,
         '-nt' :  ntOPT,
         '-ot' :  otOPT,
@@ -315,26 +321,24 @@ def predParse(tokens):
         '-lt' :  ltOPT,
         '-le' :  leOPT,
         '-a' : aOPT,
-        '-o' : oOPT
+        '-o' : oOPT,
+        '!'  : exOPT
     }
-    pyExprs = ''
+    pos += 1
+    predExprs = ''
     optHandler = None
-    pos = 0
     while pos < len(tokens):
         (word, tag) = tokens[pos]
         if tag == 'OPT':
-            optHandler = predOptions[word]
+            opt = re.match('\s+(-[\w]+)\s+', word)
+            opt = opt.group(1)
+            optHandler = predOptions[opt]
+            (pyExprs, pos) = optHandler(pyExprs, tokens, pos)
         else:
-            (words, _) = parse([(word, tag)])
-            pyExprs += words
+            (words, _) = parse([tokens[pos]])
+            predExprs += words
         pos += 1
-    if optHandler:
-        pass
-    return (pyExprs, None)
-
-
-def test(pyExprs, tokens, pos):
-    pass
+    return (pyExprs + predExprs, pos)
 
 def ifStatement(pyExprs, tokens, pos):
     numIfs = 1 #Keeps track of how many nested ifs there are
@@ -345,8 +349,6 @@ def ifStatement(pyExprs, tokens, pos):
             pyExprs += word
             pos = findWhiteSpace(tokens, pos) + 1
             (word, tag) = tokens[pos]
-            if tag == 'TEST':
-                pos = findWhiteSpace(tokens, pos) + 1
             ifPred = [] #contains the predicate of the if statements
             while True:
                 (word, tag) = tokens[pos]
@@ -355,7 +357,7 @@ def ifStatement(pyExprs, tokens, pos):
                     break
                 ifPred.append(tokens[pos])
                 pos += 1
-            (pred, _) = predParse(ifPred)    
+            (pred, _) = parse(ifPred)   
             pyExprs = pyExprs + ' ' + pred.rstrip() + ':\n'
         elif re.match('else', word):
              pyExprs = pyExprs + word + ':\n'
@@ -482,36 +484,7 @@ tokenExprs = [
 (r'else', 'IFSTATEMENT'),
 (r'fi\s', 'FI'),
 (r'expr', 'EXPR'),
-(r'-b', 'OPT'),
-(r'-c', 'OPT'),
-(r'-d', 'OPT'),
-(r'-e', 'OPT'),
-(r'-f', 'OPT'),
-(r'-g', 'OPT'),
-(r'-h', 'OPT'),
-(r'-k', 'OPT'),
-(r'-n', 'OPT'),
-(r'-p', 'OPT'),
-(r'-r', 'OPT'),
-(r'-s', 'OPT'),
-(r'-u', 'OPT'),
-(r'-w', 'OPT'),
-(r'-x', 'OPT'),
-(r'-z', 'OPT'),
-(r'-L', 'OPT'),
-(r'-O', 'OPT'),
-(r'-G', 'OPT'),
-(r'-S', 'OPT'),
-(r'-nt', 'OPT'),
-(r'-ot', 'OPT'),
-(r'-eq', 'OPT'),
-(r'-ne', 'OPT'),
-(r'-gt', 'OPT'),
-(r'-ge', 'OPT'),
-(r'-lt', 'OPT'),
-(r'-le', 'OPT'),
-(r'-a', 'OPT'),
-(r'-o', 'OPT'),
+(r'\s+-([a-z]|O|L|G|S|nt|ot|eq|ne|gt|ge|lt|le)\s+', 'OPT'),
 (r'\$[0-9]+', 'ARG'),
 (r'\s+\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
 (r'cd', 'CD'),

@@ -70,6 +70,34 @@ else
     echo error
 fi
 
+echo 'hello world'
+
+echo 'When old age shall this generation waste,'
+echo 'Thou shalt remain, in midst of other woe'
+echo 'Than ours, a friend to man, to whom thou sayst,'
+echo '"Beauty is truth, truth beauty",  -  that is all'
+echo 'Ye know on earth, and all ye need to know.'
+
+echo "hello world"
+
+if test -r /dev/null
+then
+    echo a
+fi
+if test -r nonexistantfile
+then
+    echo b
+fi
+
+if test -d /dev/null
+then
+    echo /dev/null
+fi
+if test -d /dev
+then
+    echo /dev
+fi
+
 echo 1;     echo 3;
      echo 4
 for i in 1, 2, 3
@@ -123,3 +151,53 @@ fi
 if test erick = rocks
    then echo cheers
 fi
+
+
+echo for in do if else elif fi done
+
+if test 1 = 3
+then
+  echo aa
+fi
+
+if
+test 2 = 4 
+then
+echo true
+fi
+
+if test -r /dev/null
+then
+    echo a
+fi
+ 
+for file in 1 2 3
+do 
+for num in 3 2 1
+do 
+if test $num = 3 
+then
+echo $num
+else
+echo $file 
+fi 
+done
+done
+
+echo hello world
+
+a=erick
+echo my name is $a
+pwd
+for file in *
+do
+echo $file
+done
+echo 'hello' aa
+      echo aa
+      ls -l '/dev/null'
+      echo aa         bb
+cd /tmp
+expr 1 '*' 1 % 4
+echo             "aa"
+echo

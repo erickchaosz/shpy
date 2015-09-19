@@ -9,16 +9,22 @@ def tokenize(characters, tokenExprs):
     'Matches regex to characters and returns a collection of tokens'
     pos = 0         #position of the regex match
     tokens = []     #result of the tokenizing
-    while (pos < len(characters)):
+    while pos < len(characters):
+        match = None
         for (pattern, tag) in tokenExprs:
             regex = re.compile(pattern)
             match = regex.match(characters, pos)
             if match:
                 text = match.group(0)
-                token = (text, tag)
-                tokens.append(token)
-                pos = match.end() 
+                if tag:
+                    token = (text, tag)
+                    tokens.append(token)
                 break
+        if not match:
+            sys.stderr.write('Illegal character: ' + characters[pos] + '\n')
+            sys.exit(1)
+        else:
+            pos = match.end()  
     return tokens
 
 def findImports(tokens):
@@ -284,6 +290,9 @@ def aOPT(pyExprs):
 def oOPT(pyExprs):
     pass
 
+def exOPT(pyExprs):
+    pass
+
 def predParse(tokens):
     predOptions = {
         '-b' :  bOPT,
@@ -315,7 +324,8 @@ def predParse(tokens):
         '-lt' :  ltOPT,
         '-le' :  leOPT,
         '-a' : aOPT,
-        '-o' : oOPT
+        '-o' : oOPT,
+        '!'  : exOPT
     }
     pyExprs = ''
     optHandler = None
@@ -323,7 +333,9 @@ def predParse(tokens):
     while pos < len(tokens):
         (word, tag) = tokens[pos]
         if tag == 'OPT':
-            optHandler = predOptions[word]
+            opt = re.match('\s+(-[\w]+)\s+', word)
+            opt = opt.match(1)
+            optHandler = predOptions[opt]
         else:
             (words, _) = parse([(word, tag)])
             pyExprs += words
@@ -334,7 +346,56 @@ def predParse(tokens):
 
 
 def test(pyExprs, tokens, pos):
-    pass
+    predOptions = {
+        '-b' :  bOPT,
+        '-c' :  cOPT,
+        '-d' :  dOPT,
+        '-e' :  eOPT,
+        '-f' :  fOPT,
+        '-g' :  gOPT,
+        '-h' :  hOPT,
+        '-k' :  kOPT,
+        '-n' :  nOPT,
+        '-p' :  pOPT,
+        '-r' :  rOPT,
+        '-s' :  sOPT,
+        '-u' :  uOPT,
+        '-w' :  wOPT,
+        '-x' :  xOPT,
+        '-z' :  zOPT,
+        '-L' :  LOPT,
+        '-O' :  OOPT,
+        '-G' :  GOPT,
+        '-S' :  SOPT,
+        '-nt' :  ntOPT,
+        '-ot' :  otOPT,
+        '-eq' :  eqOPT,
+        '-ne' :  neOPT,
+        '-gt' :  gtOPT,
+        '-ge' :  geOPT,
+        '-lt' :  ltOPT,
+        '-le' :  leOPT,
+        '-a' : aOPT,
+        '-o' : oOPT,
+        '!'  : exOPT
+    }
+    #FIX THIS!!
+    pos = findWhiteSpace(tokens, pos) + 1
+    predExprs = ''
+    optHandler = None
+    while pos < len(tokens):
+        (word, tag) = tokens[pos]
+        if tag == 'OPT':
+            opt = re.match('\s+(-[\w]+)\s+', word)
+            opt = opt.match(1)
+            optHandler = predOptions[opt]
+        else:
+            (words, _) = parse([tokens[pos]])
+            predExprs += words
+        pos += 1
+    if optHandler:
+        predExprs = optHandler(predExprs)
+    return (pyExprs + predExprs, pos)
 
 def ifStatement(pyExprs, tokens, pos):
     numIfs = 1 #Keeps track of how many nested ifs there are
@@ -345,8 +406,6 @@ def ifStatement(pyExprs, tokens, pos):
             pyExprs += word
             pos = findWhiteSpace(tokens, pos) + 1
             (word, tag) = tokens[pos]
-            if tag == 'TEST':
-                pos = findWhiteSpace(tokens, pos) + 1
             ifPred = [] #contains the predicate of the if statements
             while True:
                 (word, tag) = tokens[pos]
@@ -355,7 +414,7 @@ def ifStatement(pyExprs, tokens, pos):
                     break
                 ifPred.append(tokens[pos])
                 pos += 1
-            (pred, _) = predParse(ifPred)    
+            (pred, _) = parse(ifPred)   
             pyExprs = pyExprs + ' ' + pred.rstrip() + ':\n'
         elif re.match('else', word):
              pyExprs = pyExprs + word + ':\n'
@@ -470,71 +529,40 @@ def parse(tokens, pos=0):
 inputStr = sys.stdin.read()
 
 tokenExprs = [
+(r'\n|;', 'NEWLINE'),
+(r'\s+', None),
 (r'#![^\n]*\n', 'SHEBANG'),
-(r'for\s', 'FORSTATEMENT'),
-(r'\sin\s', 'FORSTATEMENT'),
-(r'do\s', 'FORSTATEMENT'),
+(r'for', 'FORSTATEMENT'),
+(r'in', 'FORSTATEMENT'),
 (r'done', 'DONE'),
+(r'do', 'FORSTATEMENT'),
 (r'if', 'IFSTATEMENT'),
 (r'test', 'TEST'),
 (r'then', 'IFSTATEMENT'),
 (r'elif', 'IFSTATEMENT'),
 (r'else', 'IFSTATEMENT'),
-(r'fi\s', 'FI'),
+(r'fi', 'FI'),
+(r'\'[^\']*\'', 'SINGLE_QUOTE'),
+(r'\"[^\"]*\"', 'DOUBLE_QUOTES'),
 (r'expr', 'EXPR'),
-(r'-b', 'OPT'),
-(r'-c', 'OPT'),
-(r'-d', 'OPT'),
-(r'-e', 'OPT'),
-(r'-f', 'OPT'),
-(r'-g', 'OPT'),
-(r'-h', 'OPT'),
-(r'-k', 'OPT'),
-(r'-n', 'OPT'),
-(r'-p', 'OPT'),
-(r'-r', 'OPT'),
-(r'-s', 'OPT'),
-(r'-u', 'OPT'),
-(r'-w', 'OPT'),
-(r'-x', 'OPT'),
-(r'-z', 'OPT'),
-(r'-L', 'OPT'),
-(r'-O', 'OPT'),
-(r'-G', 'OPT'),
-(r'-S', 'OPT'),
-(r'-nt', 'OPT'),
-(r'-ot', 'OPT'),
-(r'-eq', 'OPT'),
-(r'-ne', 'OPT'),
-(r'-gt', 'OPT'),
-(r'-ge', 'OPT'),
-(r'-lt', 'OPT'),
-(r'-le', 'OPT'),
-(r'-a', 'OPT'),
-(r'-o', 'OPT'),
+(r'(\w|\/)*\*(\w|\.)*', 'GLOB'),
+(r'(\w|\/)*\?(\w|\.)*', 'GLOB'),
+(r'(\w|\/)*\[(\w|\.|-)*\](\w|\.)*', 'GLOB'),
+(r'-([a-z]|O|L|G|S|nt|ot|eq|ne|gt|ge|lt|le)', 'OPT'),
 (r'\$[0-9]+', 'ARG'),
-(r'\s+\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
+(r'\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
 (r'cd', 'CD'),
 (r'read', 'READ'),
 (r'exit', 'EXIT'),
-(r'\'[^\']*\'', 'SINGLE_QUOTE'),
-(r'\"[^\"]*\"', 'DOUBLE_QUOTES'),
 (r'echo', 'ECHO'),
 (r'ls', 'SUBPROC'),
 (r'pwd', 'SUBPROC'),
 (r'id', 'SUBPROC'),
 (r'date', 'SUBPROC'),
 (r'#[^\n]*\n', 'COMMENT'),
-(r';', 'NEWLINE'),
-(r'\n', 'NEWLINE'),
-(r'\s+', 'WHITESPACE'),
 (r'[^= \s]+=', 'VARASSIGNMENT'),
 (r'\$\w+', 'VARIABLE'),
-(r'(\w|\/)*\*(\w|\.)*', 'GLOB'),
-(r'(\w|\/)*\?(\w|\.)*', 'GLOB'),
-(r'(\w|\/)*\[(\w|\.|-)*\](\w|\.)*', 'GLOB'),
-(r'[A-Za-z0-9,.\-/]+', 'WORD'),
-(r'.*', 'NOTFOUND')
+(r'[A-Za-z0-9,.\-/_]+', 'WORD')
 ]
 
 tokens = tokenize(inputStr, tokenExprs)
