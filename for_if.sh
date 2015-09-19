@@ -8,15 +8,21 @@ then
 fi
 
 if
-test 2 = 4 
+test 2 -eq 4 
 then
 echo true
 fi
 
-if test -n 'aa'
+if test /dev/null -ot aye.sh
 then
-  echo true
+echo true
 fi
+
+if test $number -gt 100000000 -o  $number -lt -100000000
+    then
+        echo Terminating because series has become too large
+        exit 0
+    fi
 
 if test -c /dev/null
 then
@@ -57,3 +63,9 @@ echo 'hello' aa
 cd /tmp
 expr 1 '*' 1 % 4
 echo             "aa"
+echo '$@'
+echo "$@"
+echo
+echo 'aa'
+echo `echo 1`
+number=`echo 2`

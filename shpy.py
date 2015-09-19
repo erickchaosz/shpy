@@ -36,7 +36,7 @@ def findImports(tokens):
         importItem = tagToImports.get(tag)
         if importItem:
             if importItem == 'options':
-                if re.match('\s+-([b-g]|k|p|r|s|u|w|x|L|S)\s+', text):
+                if re.match('\s+-([b-g]|k|p|r|s|u|w|x|L|S|ot|nt)\s+', text):
                     imports.add('os')
                 if re.match('\s+-(b|c|p|S)\s+', text):
                     imports.add('stat')
@@ -85,13 +85,17 @@ def echo(pyExprs, tokens, pos):
             break
         elif tag == 'WHITESPACE':
             pyExprs += ', '
+        elif tag == 'BACK_QUOTE':
+            #BUG HERE!!
+            (words, pos) = parse(tokens, pos)
+            pyExprs += words
         else:
             if tag == 'IFSTATEMENT' or tag == 'FI' or tag == 'FORSTATEMENT' or tag == 'DONE':
                 tokens[pos] = (word, 'WORD')
             (words, _) = parse([tokens[pos]])
             pyExprs += words
         pos += 1
-    return (pyExprs, pos)
+    return (pyExprs + '\n', pos)
 
 def whitespace(pyExprs, tokens, pos):
     return (pyExprs + ' ', pos)
@@ -136,7 +140,7 @@ def varassignment(pyExprs, tokens, pos):
     (var, _) = tokens[pos]
     m = re.match(r'([^=]+)=', var)
     var = m.group(1)
-    pyExprs = pyExprs + var + ' = ' 
+    pyExprs = pyExprs + var + ' = '
     return (pyExprs, pos)
 
 def cd(pyExprs, tokens, pos):
@@ -260,38 +264,64 @@ def LOPT(pyExprs, tokens, pos):
 def SOPT(pyExprs, tokens, pos):
     return fileOPT('stat.S_ISSOCK(os.stat', pyExprs, tokens, pos, ').st_mode')
 
-def ntOPT(pyExprs):
-    pass
+def getFileCreated(fileName):
+    return 'os.path.getctime(' + fileName + ')'
 
-def otOPT(pyExprs):
-    pass
+def filesOPT(pyExprs, tokens, pos, operator):
+    (lastExpr, pyExprs) = removeLastExprs(pyExprs, tokens, pos)
+    pos += 1
+    (fileName, _) = parse([tokens[pos]])
+    pyExprs = pyExprs + getFileCreated(lastExpr) + operator + getFileCreated(fileName)
+    return (pyExprs, pos)
 
-def eqOPT(pyExprs):
-    pass
+def ntOPT(pyExprs, tokens, pos):
+    return filesOPT(pyExprs, tokens, pos, ' > ')
 
-def neOPT(pyExprs):
-    pass
+def otOPT(pyExprs, tokens, pos):
+    return filesOPT(pyExprs, tokens, pos, ' < ')
 
-def gtOPT(pyExprs):
-    pass
+def removeLastExprs(pyExprs, tokens, pos):
+    'Return (last expr, pyExprs without last expr)'
+    lastExpr = pyExprs.rsplit(None, 1)[-1]
+    pyExprs =  ' '.join(pyExprs.split(' ')[:-1])
+    return (lastExpr, pyExprs)
 
-def geOPT(pyExprs):
-    pass
+def toInt(expr):
+    return 'int(' + expr + ')'
 
-def ltOPT(pyExprs):
-    pass
+def arithOpt(pyExprs, tokens, pos, operator):
+    (lastExpr, pyExprs) = removeLastExprs(pyExprs, tokens, pos)
+    pos += 1
+    (word, _) = parse([tokens[pos]])
+    pyExprs = pyExprs + toInt(lastExpr) + operator + toInt(word)
+    return (pyExprs, pos)
 
-def leOPT(pyExprs):
-    pass
+def eqOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' == ')
 
-def aOPT(pyExprs):
-    pass
+def neOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' != ')
 
-def oOPT(pyExprs):
-    pass
+def gtOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' > ')
 
-def exOPT(pyExprs):
-    pass
+def geOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' >= ')
+
+def ltOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' < ')
+
+def leOPT(pyExprs, tokens, pos):
+    return arithOpt(pyExprs, tokens, pos, ' <= ')
+
+def aOPT(pyExprs, tokens, pos):
+    return (pyExprs + ' and ' , pos)
+
+def oOPT(pyExprs, tokens, pos):
+    return (pyExprs + ' or ', pos)
+
+def exOPT(pyExprs, tokens, pos):
+    return (pyExprs + ' not ', pos)
 
 def test(pyExprs, tokens, pos):
     predOptions = {
@@ -325,7 +355,6 @@ def test(pyExprs, tokens, pos):
         '!'  : exOPT
     }
     pos += 1
-    predExprs = ''
     optHandler = None
     while pos < len(tokens):
         (word, tag) = tokens[pos]
@@ -336,9 +365,9 @@ def test(pyExprs, tokens, pos):
             (pyExprs, pos) = optHandler(pyExprs, tokens, pos)
         else:
             (words, _) = parse([tokens[pos]])
-            predExprs += words
+            pyExprs += words
         pos += 1
-    return (pyExprs + predExprs, pos)
+    return (pyExprs, pos)
 
 def ifStatement(pyExprs, tokens, pos):
     numIfs = 1 #Keeps track of how many nested ifs there are
@@ -424,7 +453,7 @@ def expr(pyExprs, tokens, pos):
         else:
             (words, _) = parse([tokens[pos]])
             if tag != 'OPERATOR' and tag != 'WHITESPACE':
-                pyExprs = pyExprs + 'int(' + words + ')'
+                pyExprs = pyExprs + toInt(words)
             else:
                 pyExprs += words
         pos += 1
@@ -433,6 +462,22 @@ def expr(pyExprs, tokens, pos):
 def opt(pyExprs, tokens, pos):
     (word, _) = tokens[pos]
     return (pyExprs + '\'' + word + '\'', pos)
+
+def backQuote(pyExprs, tokens, pos):
+    pos += 1 #go to first expr
+    pyExprs += 'subprocess.check_output(['
+    while pos < len(tokens):
+        (word, tag) = tokens[pos]
+        if tag == 'BACK_QUOTE':
+            pos += 1
+            break
+        elif tag == 'WHITESPACE':
+            pyExprs += ', '
+        else:
+            pyExprs = pyExprs + '\'' + word + '\''
+        pos += 1
+    pyExprs += '])\n'
+    return (pyExprs , pos)
 
 def parse(tokens, pos=0):
     pyExprs = ""
@@ -459,7 +504,8 @@ def parse(tokens, pos=0):
                 'COMMENT' : comment,
                 'EXPR'   : expr,
                 'OPT'   : opt,
-                'TEST'  : test}
+                'TEST'  : test,
+                'BACK_QUOTE'  : backQuote}
     while (pos < len(tokens)):
         (words, tag) = tokens[pos]
         handleToken = tagFuncs[tag]
@@ -492,6 +538,7 @@ tokenExprs = [
 (r'exit', 'EXIT'),
 (r'\'[^\']*\'', 'SINGLE_QUOTE'),
 (r'\"[^\"]*\"', 'DOUBLE_QUOTES'),
+(r'`', 'BACK_QUOTE'),
 (r'echo', 'ECHO'),
 (r'ls', 'SUBPROC'),
 (r'pwd', 'SUBPROC'),
