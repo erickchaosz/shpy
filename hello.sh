@@ -1,5 +1,3 @@
 #!/bin/bash
 
-IFS='|'
-echo "$@"
-echo "$*"
+test 100 -gt 1000 -o 10 -ne 1

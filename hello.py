@@ -2,7 +2,10 @@
 import os
 import stat
 import subprocess
+import re
 
-
-print stat.S_ISCHR(os.stat('/dev/null').st_mode)
-print subprocess.check_output(['expr', '1', '+', '1'])
+text = 'echo echon'
+regex = re.compile(r'(echo)\s+')
+match = regex.match(text, 0)
+print match.group(0)
+print match.end(1)
