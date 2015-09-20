@@ -222,7 +222,7 @@ def eOPT(pyExprs, tokens, pos):
 def fOPT(pyExprs, tokens, pos):
     return fileOPT('os.path.isfile', pyExprs, tokens, pos)
 
-def gOPT(pyExprs):
+def gOPT(pyExprs, tokens, pos):
     return fileOPT('os.stat', pyExprs, tokens, pos, '', '.st_mode & stat.S_ISGID')
 
 def kOPT(pyExprs, tokens, pos):
@@ -237,7 +237,7 @@ def rOPT(pyExprs, tokens, pos):
 def sOPT(pyExprs, tokens, pos):
     return fileOPT('os.path.getsize', pyExprs, tokens, pos, '' , ' > 0')
 
-def uOPT(pyExprs):
+def uOPT(pyExprs, tokens, pos):
     return fileOPT('os.stat', pyExprs, tokens, pos, '', '.st_mode & stat.S_ISUID')
 
 def wOPT(pyExprs, tokens, pos):
@@ -530,7 +530,7 @@ tokenExprs = [
 (r'else', 'IFSTATEMENT'),
 (r'fi\s', 'FI'),
 (r'expr', 'EXPR'),
-(r'\s+-([a-z]|O|L|G|S|nt|ot|eq|ne|gt|ge|lt|le)\s+', 'OPT'),
+(r'\s+-(nt|ot|eq|ne|gt|ge|lt|le|[a-z]|O|L|G|S)\s+', 'OPT'),
 (r'\$[0-9]+', 'ARG'),
 (r'\s+\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
 (r'cd', 'CD'),

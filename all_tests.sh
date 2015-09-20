@@ -29,13 +29,6 @@ do
     echo $word
 done
 
-
-for word in Houston 1202 alarm
-do
-    echo $word
-    exit 0
-done
-
 for c_file in *.c
 do
     echo gcc -c $c_file
@@ -79,24 +72,6 @@ echo '"Beauty is truth, truth beauty",  -  that is all'
 echo 'Ye know on earth, and all ye need to know.'
 
 echo "hello world"
-
-if test -r /dev/null
-then
-    echo a
-fi
-if test -r nonexistantfile
-then
-    echo b
-fi
-
-if test -d /dev/null
-then
-    echo /dev/null
-fi
-if test -d /dev
-then
-    echo /dev
-fi
 
 echo 1;     echo 3;
      echo 4
@@ -165,11 +140,6 @@ test 2 = 4
 then
 echo true
 fi
-
-if test -r /dev/null
-then
-    echo a
-fi
  
 for file in 1 2 3
 do 
@@ -200,4 +170,5 @@ echo 'hello' aa
 cd /tmp
 expr 1 '*' 1 % 4
 echo             "aa"
-echo
+echo echo
+a=1

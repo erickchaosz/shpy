@@ -67,30 +67,23 @@ def shebang(pyExprs, tokens, pos):
 def newline(pyExprs, tokens, pos):
     return (pyExprs + '\n', pos)
 
-def findWhiteSpace(tokens, pos):
-    while pos < len(tokens):
-        (word, tag) = tokens[pos]
-        if tag == 'WHITESPACE' or tag == 'NEWLINE':
-            break
-        pos += 1
-    return pos
-
 def echo(pyExprs, tokens, pos):
     pyExprs += 'print '
-    pos = findWhiteSpace(tokens,pos) + 1     #skip whitespace
+    pos += 1
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
         if tag == 'NEWLINE':
             break
-        elif tag == 'WHITESPACE':
-            pyExprs += ', '
         else:
             if tag == 'IFSTATEMENT' or tag == 'FI' or tag == 'FORSTATEMENT' or tag == 'DONE':
                 tokens[pos] = (word, 'WORD')
             (words, _) = parse([tokens[pos]])
             pyExprs += words
+            pyExprs += ', '
+            if word[-1] == '\n':
+                break
         pos += 1
-    return (pyExprs, pos-1)
+    return (pyExprs.rstrip(', ') + '\n', pos)
 
 def whitespace(pyExprs, tokens, pos):
     return (pyExprs + ' ', pos)
@@ -107,7 +100,7 @@ def subproc(pyExprs, tokens, pos):
     pyExprs += 'subprocess.call([' 
     (subprocess, _) = tokens[pos]
     pyExprs = pyExprs + '\'' + subprocess + '\''
-    pos = findWhiteSpace(tokens, pos)    
+    pos += 1
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
         if tag == 'NEWLINE':
@@ -139,19 +132,19 @@ def varassignment(pyExprs, tokens, pos):
     return (pyExprs, pos)
 
 def cd(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos += 1
     (directory, _) = tokens[pos]
     pyExprs = pyExprs + 'os.chdir(\'' + directory + '\')'
     return (pyExprs, pos)
 
 def exitFunc(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos += 1
     (retValue, _) = tokens[pos]
     pyExprs = pyExprs + 'sys.exit(' + retValue + ')'
     return (pyExprs, pos)
 
 def read(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos += 1
     (word, tag) = tokens[pos]
     pyExprs = pyExprs + word + ' = ' + 'sys.stdin.readline().rstrip()'
     return (pyExprs, pos)
@@ -380,7 +373,7 @@ def test(pyExprs, tokens, pos):
         '!'  : exOPT
     }
     #FIX THIS!!
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos += 1
     predExprs = ''
     optHandler = None
     while pos < len(tokens):
@@ -402,22 +395,21 @@ def ifStatement(pyExprs, tokens, pos):
     ifBody = []
     while True:
         (word, tag) = tokens[pos]
-        if re.match('if|elif', word):
+        if re.match(r'(if|elif)\s+', word):
             pyExprs += word
-            pos = findWhiteSpace(tokens, pos) + 1
+            pos += 1
             (word, tag) = tokens[pos]
             ifPred = [] #contains the predicate of the if statements
             while True:
                 (word, tag) = tokens[pos]
-                if word == 'then' and tag == 'IFSTATEMENT':
-                    pos += 1
+                if re.match(r'then\s+', word) and tag == 'IFSTATEMENT':
                     break
                 ifPred.append(tokens[pos])
                 pos += 1
-            (pred, _) = parse(ifPred)   
-            pyExprs = pyExprs + ' ' + pred.rstrip() + ':\n'
-        elif re.match('else', word):
-             pyExprs = pyExprs + word + ':\n'
+            (pred, _) = parse(ifPred)
+            pyExprs = pyExprs.rstrip() + ' ' + pred.rstrip() + ':\n'
+        elif re.match(r'else\s+', word):
+             pyExprs = pyExprs + word.rstrip() + ':\n'
         elif tag == 'FI':
             break
 
@@ -426,9 +418,9 @@ def ifStatement(pyExprs, tokens, pos):
         ifBody = [] 
         while True:
             (word, tag) = tokens[pos]
-            if word == 'if' and tag == 'IFSTATEMENT':
+            if re.match(r'if\s+',word) and tag == 'IFSTATEMENT':
                 numIfs += 1
-            elif numIfs == 1 and (word == 'elif' or word == 'else' or tag == 'FI'):    
+            elif numIfs == 1 and re.match(r'(elif|else|fi)\s+', word):
                 break
             elif numIfs > 1 and tag == 'FI':
                 numIfs -= 1
@@ -473,7 +465,7 @@ def comment(pyExprs, tokens, pos):
     return (pyExprs + word, pos)
 
 def expr(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens,pos) + 1     #skip whitespace
+    pos += 1
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
         if tag == 'NEWLINE':
@@ -521,7 +513,6 @@ def parse(tokens, pos=0):
         (words, tag) = tokens[pos]
         handleToken = tagFuncs[tag]
         (pyExprs, pos) = handleToken(pyExprs, tokens, pos)
-        pyExprs = pyExprs.rstrip(' \t')
         pos += 1
     return (pyExprs,pos)
 
@@ -532,16 +523,16 @@ tokenExprs = [
 (r'\n|;', 'NEWLINE'),
 (r'\s+', None),
 (r'#![^\n]*\n', 'SHEBANG'),
-(r'for', 'FORSTATEMENT'),
-(r'in', 'FORSTATEMENT'),
-(r'done', 'DONE'),
-(r'do', 'FORSTATEMENT'),
-(r'if', 'IFSTATEMENT'),
-(r'test', 'TEST'),
-(r'then', 'IFSTATEMENT'),
-(r'elif', 'IFSTATEMENT'),
-(r'else', 'IFSTATEMENT'),
-(r'fi', 'FI'),
+(r'for\s+', 'FORSTATEMENT'),
+(r'in\s+', 'FORSTATEMENT'),
+(r'done\s+', 'DONE'),
+(r'do\s+', 'FORSTATEMENT'),
+(r'if\s+', 'IFSTATEMENT'),
+(r'test\s+', 'TEST'),
+(r'then\s+', 'IFSTATEMENT'),
+(r'elif\s+', 'IFSTATEMENT'),
+(r'else\s+', 'IFSTATEMENT'),
+(r'fi\s+', 'FI'),
 (r'\'[^\']*\'', 'SINGLE_QUOTE'),
 (r'\"[^\"]*\"', 'DOUBLE_QUOTES'),
 (r'expr', 'EXPR'),
