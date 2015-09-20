@@ -9,16 +9,22 @@ def tokenize(characters, tokenExprs):
     'Matches regex to characters and returns a collection of tokens'
     pos = 0         #position of the regex match
     tokens = []     #result of the tokenizing
-    while (pos < len(characters)):
+    while pos < len(characters):
+        match = None
         for (pattern, tag) in tokenExprs:
             regex = re.compile(pattern)
             match = regex.match(characters, pos)
             if match:
                 text = match.group(0)
-                token = (text, tag)
-                tokens.append(token)
-                pos = match.end() 
+                if tag:
+                    token = (text, tag)
+                    tokens.append(token)
                 break
+        if not match:
+            sys.stderr.write('Illegal character: ' + characters[pos] + '\n')
+            sys.exit(1)
+        else:
+            pos = match.end(0)  
     return tokens
 
 def findImports(tokens):
@@ -36,7 +42,7 @@ def findImports(tokens):
         importItem = tagToImports.get(tag)
         if importItem:
             if importItem == 'options':
-                if re.match('\s+-([b-g]|k|p|r|s|u|w|x|L|S|ot|nt)\s+', text):
+                if re.match('\s+-(|ot|nt|[b-g]|k|p|r|s|u|w|x|L|S)\s+', text):
                     imports.add('os')
                 if re.match('\s+-(b|c|p|S)\s+', text):
                     imports.add('stat')
@@ -68,37 +74,38 @@ def shebang(pyExprs, tokens, pos):
 def newline(pyExprs, tokens, pos):
     return (pyExprs + '\n', pos)
 
-def findWhiteSpace(tokens, pos):
-    while pos < len(tokens):
-        (word, tag) = tokens[pos]
-        if tag == 'WHITESPACE' or tag == 'NEWLINE':
-            break
-        pos += 1
-    return pos
+def nextPos(pos):
+    return pos + 1
 
 def echo(pyExprs, tokens, pos):
     pyExprs += 'print '
-    pos = findWhiteSpace(tokens,pos) + 1     #skip whitespace
+    pos = nextPos(pos)
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
         if tag == 'NEWLINE':
             break
-        elif tag == 'WHITESPACE':
-            pyExprs += ', '
-        elif tag == 'BACK_QUOTE':
-            #BUG HERE!!
-            (words, pos) = parse(tokens, pos)
+        elif tag == 'BACK_TICK':
+            backExprs = [tokens[pos]]
+            pos = nextPos(pos)
+            while True:
+                (text, tag) = tokens[pos]
+                backExprs.append(tokens[pos])
+                if tag == 'BACK_TICK':
+                    break
+                else:
+                    pos = nextPos(pos)
+            (words, _) = parse(backExprs)
             pyExprs += words
         else:
-            if tag == 'IFSTATEMENT' or tag == 'FI' or tag == 'FORSTATEMENT' or tag == 'DONE':
+            if tag == 'IFSTATEMENT' or tag == 'FI' or tag == 'LOOP' or tag == 'DONE':
                 tokens[pos] = (word, 'WORD')
             (words, _) = parse([tokens[pos]])
             pyExprs += words
-        pos += 1
-    return (pyExprs + '\n', pos)
-
-def whitespace(pyExprs, tokens, pos):
-    return (pyExprs + ' ', pos)
+            if word[-1] == '\n':
+                break
+            pyExprs += ', '
+        pos = nextPos(pos)
+    return (pyExprs.rstrip(', ') + '\n', pos)
 
 def word(pyExprs, tokens, pos):
     (words, tag) = tokens[pos]
@@ -111,19 +118,18 @@ def quotes(pyExprs, tokens, pos):
 def subproc(pyExprs, tokens, pos):
     pyExprs += 'subprocess.call([' 
     (subprocess, _) = tokens[pos]
-    pyExprs = pyExprs + '\'' + subprocess + '\''
-    pos = findWhiteSpace(tokens, pos)    
+    pyExprs = pyExprs + '\'' + subprocess + '\', '
+    pos = nextPos(pos)
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
         if tag == 'NEWLINE':
             break
-        elif tag == 'WHITESPACE':
-            pyExprs += ', '
         else:
             (words, _) = parse([tokens[pos]])
             pyExprs += words
-        pos += 1
-    pyExprs += '])'
+            pyExprs += ', '
+        pos = nextPos(pos)
+    pyExprs = pyExprs.rstrip(', ') + '])'
     return (pyExprs, pos-1)
 
 def number(pyExprs, tokens, pos):
@@ -144,65 +150,84 @@ def varassignment(pyExprs, tokens, pos):
     return (pyExprs, pos)
 
 def cd(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos = nextPos(pos)
     (directory, _) = tokens[pos]
     pyExprs = pyExprs + 'os.chdir(\'' + directory + '\')'
     return (pyExprs, pos)
 
 def exitFunc(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos = nextPos(pos)
     (retValue, _) = tokens[pos]
     pyExprs = pyExprs + 'sys.exit(' + retValue + ')'
     return (pyExprs, pos)
 
 def read(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens, pos) + 1
+    pos = nextPos(pos)
     (word, tag) = tokens[pos]
     pyExprs = pyExprs + word + ' = ' + 'sys.stdin.readline().rstrip()'
     return (pyExprs, pos)
 
-
-def forStatement(pyExprs, tokens, pos):
-    numLoop = 0 #Keeps track of how many nested loops there are
-    pyExprs += 'for ' 
-    pos += 1
-    (var, tag) = tokens[pos]
-    pyExprs = pyExprs + var + ' in '
-    pos += 2
+def inStatement(pyExprs, tokens, pos):
+    pos = nextPos(pos)
+    pyExprs += ' in '
     while pos < len(tokens): #loop until the do statement
         (word, tag) = tokens[pos]
-        if tag == 'FORSTATEMENT' and re.match(r'do\s+',word):
+        if re.match(r'do\s+',word):
             pyExprs = pyExprs.rstrip(', \n')
-            pyExprs += ':\n'
             pos += 1
             break
-        elif tag == 'WHITESPACE':
-            pyExprs += ', '
         else:
             (word, _) = parse([tokens[pos]])
             pyExprs += word
-        pos += 1
+            pyExprs += ', '
+        pos = nextPos(pos)
+    return (pyExprs, pos)
+
+def loop(pyExprs, tokens, pos):
+    numLoop = 0 #Keeps track of how many nested loops there are
+    (loopKeyword, _) = tokens[pos]
+    pyExprs += loopKeyword
+    pos = nextPos(pos)
+    (var, tag) = tokens[pos]
+    if tag == 'TEST':
+        loopPred = []
+        while True:
+            (word, tag) = tokens[pos]
+            if re.match(r'do\s+', word):
+                pos = nextPos(pos)
+                break
+            loopPred.append(tokens[pos])
+            pos = nextPos(pos)
+        (pred, _) = parse(loopPred)
+        pyExprs += pred.rstrip()
+    else:
+        pyExprs = pyExprs + var
+        pos = nextPos(pos)
+        (pyExprs, pos) = inStatement(pyExprs, tokens, pos)
+    pyExprs += ':\n'
+
     numLoop += 1
-    forBodyTokens = []
+    loopBodyTokens = []
     while numLoop > 0: #adds the body of the loop tokens into the forBodyTokens
         (word, tag) = tokens[pos]
-        if re.match(r'for\s+', word):
+        if re.match(r'(for|while)\s+', word):
             numLoop += 1
         elif tag == 'DONE':
             numLoop -= 1
         if numLoop > 0:
-            forBodyTokens.append(tokens[pos])
-        pos += 1
-    (words, _) = parse(forBodyTokens)
-    forBodyList = words.split('\n') 
-    forBody = ''
-    for line in forBodyList: #adds tabs to the body of the loop
+            loopBodyTokens.append(tokens[pos])
+        pos = nextPos(pos)
+
+    (words, _) = parse(loopBodyTokens)
+    loopBodyList = words.split('\n') 
+    loopBody = ''
+    for line in loopBodyList: #adds tabs to the body of the loop
         if line:
-            forBody = forBody + '\t' + line.lstrip(' ') + '\n'
-    return (pyExprs + forBody, pos-1)
+            loopBody = loopBody + '\t' + line.lstrip(' ') + '\n'
+    return (pyExprs + loopBody, pos-1)
 
 def fileOPT(pyCall, pyExprs, tokens, pos, callParam = '', extraOps = ''):
-    pos += 1
+    pos = nextPos(pos)
     (fileName, _) = parse([tokens[pos]])
     pyExprs = pyCall + '(' + fileName + callParam + ')' + extraOps
     return (pyExprs, pos)
@@ -247,7 +272,7 @@ def xOPT(pyExprs, tokens, pos):
     return fileOPT('os.access', pyExprs, tokens, pos, ', os.X_OK')
 
 def stringOPT(pyExprs, tokens, pos, check):
-    pos += 1
+    pos = nextPos(pos)
     (word, _) = parse([tokens[pos]])
     pyExprs = pyExprs + 'len(' + word + ')' + check
     return (pyExprs, pos)
@@ -269,7 +294,7 @@ def getFileCreated(fileName):
 
 def filesOPT(pyExprs, tokens, pos, operator):
     (lastExpr, pyExprs) = removeLastExprs(pyExprs, tokens, pos)
-    pos += 1
+    pos = nextPos(pos)
     (fileName, _) = parse([tokens[pos]])
     pyExprs = pyExprs + getFileCreated(lastExpr) + operator + getFileCreated(fileName)
     return (pyExprs, pos)
@@ -283,7 +308,7 @@ def otOPT(pyExprs, tokens, pos):
 def removeLastExprs(pyExprs, tokens, pos):
     'Return (last expr, pyExprs without last expr)'
     lastExpr = pyExprs.rsplit(None, 1)[-1]
-    pyExprs =  ' '.join(pyExprs.split(' ')[:-1])
+    pyExprs =  re.sub(r'[^\s]+$', '',  pyExprs)
     return (lastExpr, pyExprs)
 
 def toInt(expr):
@@ -291,7 +316,7 @@ def toInt(expr):
 
 def arithOpt(pyExprs, tokens, pos, operator):
     (lastExpr, pyExprs) = removeLastExprs(pyExprs, tokens, pos)
-    pos += 1
+    pos = nextPos(pos)
     (word, _) = parse([tokens[pos]])
     pyExprs = pyExprs + toInt(lastExpr) + operator + toInt(word)
     return (pyExprs, pos)
@@ -354,19 +379,21 @@ def test(pyExprs, tokens, pos):
         '-o' : oOPT,
         '!'  : exOPT
     }
-    pos += 1
+    pos = nextPos(pos)
     optHandler = None
     while pos < len(tokens):
         (word, tag) = tokens[pos]
         if tag == 'OPT':
-            opt = re.match('\s+(-[\w]+)\s+', word)
+            opt = re.match('(-[\w]+)\s+', word)
             opt = opt.group(1)
             optHandler = predOptions[opt]
             (pyExprs, pos) = optHandler(pyExprs, tokens, pos)
+        elif tag == 'TEST':
+            break
         else:
             (words, _) = parse([tokens[pos]])
             pyExprs += words
-        pos += 1
+        pos = nextPos(pos)
     return (pyExprs, pos)
 
 def ifStatement(pyExprs, tokens, pos):
@@ -374,38 +401,36 @@ def ifStatement(pyExprs, tokens, pos):
     ifBody = []
     while True:
         (word, tag) = tokens[pos]
-        if re.match('if|elif', word):
+        if re.match(r'(if|elif)\s+', word):
             pyExprs += word
-            pos = findWhiteSpace(tokens, pos) + 1
-            (word, tag) = tokens[pos]
+            pos = nextPos(pos)
             ifPred = [] #contains the predicate of the if statements
             while True:
                 (word, tag) = tokens[pos]
-                if word == 'then' and tag == 'IFSTATEMENT':
-                    pos += 1
+                if re.match(r'then\s+', word) and tag == 'IFSTATEMENT':
                     break
                 ifPred.append(tokens[pos])
-                pos += 1
-            (pred, _) = parse(ifPred)   
-            pyExprs = pyExprs + ' ' + pred.rstrip() + ':\n'
-        elif re.match('else', word):
-             pyExprs = pyExprs + word + ':\n'
+                pos = nextPos(pos)
+            (pred, _) = parse(ifPred)
+            pyExprs = pyExprs.rstrip() + ' ' + pred.rstrip() + ':\n'
+        elif re.match('else\s+', word):
+             pyExprs = pyExprs + word.rstrip() + ':\n'
         elif tag == 'FI':
             break
 
         numIfs = 1
-        pos += 1
+        pos = nextPos(pos)
         ifBody = [] 
         while True:
             (word, tag) = tokens[pos]
-            if word == 'if' and tag == 'IFSTATEMENT':
+            if re.match(r'if\s+', word) and tag == 'IFSTATEMENT':
                 numIfs += 1
-            elif numIfs == 1 and (word == 'elif' or word == 'else' or tag == 'FI'):    
+            elif numIfs == 1 and  re.match(r'(elif|else|fi)\s+', word):
                 break
             elif numIfs > 1 and tag == 'FI':
                 numIfs -= 1
             ifBody.append(tokens[pos])
-            pos += 1
+            pos = nextPos(pos)
         (body, _) = parse(ifBody)            
         ifBodyList = body.split('\n')
         ifBody = ''
@@ -425,9 +450,14 @@ def glob(pyExprs, tokens, pos):
 
 def arg(pyExprs, tokens, pos):
     (word, _) = tokens[pos]
-    argIndex = word[1:]
-    getArg = 'sys.argv[' + argIndex + ']'
-    return (pyExprs + getArg, pos)
+    argIdentifier = word[1:]
+    argParam = argIdentifier
+    if re.match(r'@|#|\*', argIdentifier):
+        argParam = '1:'
+    argCall = 'sys.argv[' + argParam + ']'
+    if re.match(r'#', argIdentifier):
+        argCall = 'len(' + argCall + ')'
+    return (pyExprs + argCall, pos)
 
 def operator(pyExprs, tokens, pos):
     (currOperator, _) = tokens[pos]
@@ -445,46 +475,71 @@ def comment(pyExprs, tokens, pos):
     return (pyExprs + word, pos)
 
 def expr(pyExprs, tokens, pos):
-    pos = findWhiteSpace(tokens,pos) + 1     #skip whitespace
+    pos = nextPos(pos)
     while pos < len(tokens):         #get tokens until newline character
         (word, tag) = tokens[pos]
-        if tag == 'NEWLINE':
+        if tag == 'NEWLINE' or tag == 'EXPR':
             break
         else:
             (words, _) = parse([tokens[pos]])
-            if tag != 'OPERATOR' and tag != 'WHITESPACE':
+            if tag != 'OPERATOR':
                 pyExprs = pyExprs + toInt(words)
             else:
                 pyExprs += words
-        pos += 1
-    return (pyExprs, pos - 1)
+        pos = nextPos(pos)
+    return (pyExprs , pos - 1)
 
 def opt(pyExprs, tokens, pos):
     (word, _) = tokens[pos]
-    return (pyExprs + '\'' + word + '\'', pos)
+    return (pyExprs + '\'' + word.rstrip() + '\'', pos)
 
-def backQuote(pyExprs, tokens, pos):
-    pos += 1 #go to first expr
+def isExpr(pyExprs, tokens, pos):
+    while pos < len(tokens):
+        (word, tag) = tokens[pos]
+        if tag == 'BACK_TICK':
+            pos += 1
+            break
+        elif tag == 'EXPR':
+            return True
+        pos = nextPos(pos)
+    return False
+
+def checkOutput(pyExprs, tokens, pos):
     pyExprs += 'subprocess.check_output(['
     while pos < len(tokens):
         (word, tag) = tokens[pos]
-        if tag == 'BACK_QUOTE':
-            pos += 1
+        if tag == 'BACK_TICK':
+            pos = nextPos(pos)
             break
-        elif tag == 'WHITESPACE':
-            pyExprs += ', '
         else:
-            pyExprs = pyExprs + '\'' + word + '\''
-        pos += 1
-    pyExprs += '])\n'
-    return (pyExprs , pos)
+            pyExprs = pyExprs + '\'' + word + '\', '
+        pos = nextPos(pos)
+    pyExprs = pyExprs.rstrip(', ') +  '])'
+    return (pyExprs, pos)
+
+def backTick(pyExprs, tokens, pos):
+    pos = nextPos(pos)
+    if isExpr(pyExprs, tokens, pos):
+        backExprs = []
+        while pos < len(tokens):
+            (word, tag) = tokens[pos]
+            if tag == 'BACK_TICK':
+                pos += 1
+                break
+            else:
+                backExprs.append(tokens[pos])
+            pos = nextPos(pos)
+        (words, _) = parse(backExprs)
+        pyExprs += words
+    else:
+        (pyExprs, pos) = checkOutput(pyExprs, tokens, pos)
+    return (pyExprs+'\n' , pos)
 
 def parse(tokens, pos=0):
     pyExprs = ""
     tagFuncs = {'SHEBANG' : shebang,
                 'ECHO'    : echo,
                 'NEWLINE' : newline,
-                'WHITESPACE' : whitespace,
                 'WORD' : word,
                 'NUMBER' : number,
                 'SINGLE_QUOTE' : quotes,
@@ -495,7 +550,7 @@ def parse(tokens, pos=0):
                 'EXIT'   : exitFunc,
                 'READ'  : read,
                 'CD'  : cd,
-                'FORSTATEMENT' : forStatement,
+                'LOOP' : loop,
                 'DONE' : done,
                 'GLOB' : glob,
                 'ARG'  : arg,
@@ -505,56 +560,57 @@ def parse(tokens, pos=0):
                 'EXPR'   : expr,
                 'OPT'   : opt,
                 'TEST'  : test,
-                'BACK_QUOTE'  : backQuote}
+                'BACK_TICK'  : backTick,}
     while (pos < len(tokens)):
         (words, tag) = tokens[pos]
         handleToken = tagFuncs[tag]
         (pyExprs, pos) = handleToken(pyExprs, tokens, pos)
-        pyExprs = pyExprs.rstrip(' \t')
-        pos += 1
+        pos = nextPos(pos)
     return (pyExprs,pos)
 
         
 inputStr = sys.stdin.read()
 
 tokenExprs = [
+(r'\n|;', 'NEWLINE'),
+(r'\s+', None),
 (r'#![^\n]*\n', 'SHEBANG'),
-(r'for\s', 'FORSTATEMENT'),
-(r'\sin\s', 'FORSTATEMENT'),
-(r'do\s', 'FORSTATEMENT'),
-(r'done', 'DONE'),
-(r'if', 'IFSTATEMENT'),
-(r'test', 'TEST'),
-(r'then', 'IFSTATEMENT'),
-(r'elif', 'IFSTATEMENT'),
-(r'else', 'IFSTATEMENT'),
-(r'fi\s', 'FI'),
-(r'expr', 'EXPR'),
-(r'\s+-(nt|ot|eq|ne|gt|ge|lt|le|[a-z]|O|L|G|S)\s+', 'OPT'),
-(r'\$[0-9]+', 'ARG'),
-(r'\s+\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
+(r'(while|for|in|do)\s+', 'LOOP'),
+(r'done\s+', 'DONE'),
+(r'(if|then|elif|else)\s+', 'IFSTATEMENT'),
+(r'(test|\[|\[{2}|\]|\]{2})\s+', 'TEST'),
+(r'fi\s+', 'FI'),
+(r'expr\s+', 'EXPR'),
+(r'\$\(\(', 'EXPR'),
+(r'\)\)', 'EXPR'),
+(r'(\w|\/)*\*(\w|\.)*', 'GLOB'),
+(r'(\w|\/)*\?(\w|\.)*', 'GLOB'),
+(r'(\w|\/)*\[(\w|\.|-)*\](\w|\.)*', 'GLOB'),
+(r'-(nt|ot|eq|ne|gt|ge|lt|le|[a-z]|O|L|G|S)\s+', 'OPT'),
+(r'\$(@|#|\*|[0-9]+)', 'ARG'),
+(r'\s*\'*(=|>|>=|<|<=|!=|\+|-|\*|\/|%)\'*\s+', 'OPERATOR'),
 (r'cd', 'CD'),
 (r'read', 'READ'),
 (r'exit', 'EXIT'),
 (r'\'[^\']*\'', 'SINGLE_QUOTE'),
 (r'\"[^\"]*\"', 'DOUBLE_QUOTES'),
-(r'`', 'BACK_QUOTE'),
+(r'`', 'BACK_TICK'),
+(r'\$\(', 'BACK_TICK'),
+(r'\)', 'BACK_TICK'),
 (r'echo', 'ECHO'),
+(r'fgrep', 'SUBPROC'),
+(r'rm', 'SUBPROC'),
+(r'mv', 'SUBPROC'),
+(r'chmod','SUBPROC'),
 (r'ls', 'SUBPROC'),
 (r'pwd', 'SUBPROC'),
 (r'id', 'SUBPROC'),
 (r'date', 'SUBPROC'),
-(r'#[^\n]*\n', 'COMMENT'),
-(r';', 'NEWLINE'),
-(r'\n', 'NEWLINE'),
-(r'\s+', 'WHITESPACE'),
+(r'#[^\n]*', 'COMMENT'),
 (r'[^= \s]+=', 'VARASSIGNMENT'),
 (r'\$\w+', 'VARIABLE'),
-(r'(\w|\/)*\*(\w|\.)*', 'GLOB'),
-(r'(\w|\/)*\?(\w|\.)*', 'GLOB'),
-(r'(\w|\/)*\[(\w|\.|-)*\](\w|\.)*', 'GLOB'),
-(r'[A-Za-z0-9,.\-/]+', 'WORD'),
-(r'.*', 'NOTFOUND')
+(r'[0-9]+', 'NUMBER'),
+(r'[A-Za-z0-9,.\-/_]+', 'WORD')
 ]
 
 tokens = tokenize(inputStr, tokenExprs)

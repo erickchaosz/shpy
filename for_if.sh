@@ -77,7 +77,7 @@ i=0
 number=$start
 file=./tmp.numbers
 rm -f $file
-while true
+while test true
 do
     if test -r $file
     then
