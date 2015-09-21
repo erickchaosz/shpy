@@ -4,8 +4,8 @@ import stat
 import subprocess
 import re
 
-text = '$((1 + 1))'
-regex = re.compile(r'(\$\(\()\s+')
-match = regex.match(text, 0)
-print match.group(1)
-print match.end(1)
+print 'a',
+print "hello",
+
+print subprocess.call(['false'])
+print subprocess.call(['true'])

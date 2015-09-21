@@ -77,7 +77,7 @@ i=0
 number=$start
 file=./tmp.numbers
 rm -f $file
-while test true
+while true
 do
     if test -r $file
     then
@@ -105,3 +105,6 @@ do
 done
 rm -f $file
 pwd
+
+echo -n aaa bb
+echo aa bb
