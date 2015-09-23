@@ -4,48 +4,13 @@ import stat
 import subprocess
 import re
 
-#ls && echo aa
-try:
-    subprocess.check_call(['ls'])
-except subprocess.CalledProcessError:
-    pass
-else:
-    try:
-        subprocess.check_call(['echo', 'aa'])
-    except subprocess.CalledProcessError:
-        pass
-    else:
-        pass
+# cat < file >> file2
 
 
-#ls || echo aa
-try:
-    subprocess.check_call(['ls'])
-except subprocess.CalledProcessError:
-    try:
-        subprocess.check_call(['echo', 'aa'])
-    except subprocess.CalledProcessError:
-        pass
-    else:
-        pass
-else:
-    pass
 
 
-#ls || echo aa && echo bb
-try:
-    subprocess.check_call(['ls'])
-except subprocess.CalledProcessError:
-    try:
-        subprocess.check_call(['echo', 'aa'])
-    except subprocess.CalledProcessError:
-        pass
-    else:
-        try:
-            subprocess.check_call(['echo', 'bb'])
-        except subprocess.CalledProcessError:
-            pass
-        else:
-            pass
-else:
-    pass
+with open('test2', 'a') as f:
+    print >>f, subprocess.check_output(['echo', 'a'])
+
+with open('test', 'r') as f:
+    subprocess.call(['cat'], stdin=f)
